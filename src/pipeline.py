@@ -4,6 +4,7 @@ import os
 from src.validator import DataValidator
 from src.cleaner import MedicalTextPreprocessor
 from src.model import SpecialistClassifier
+from src.balancer import DataBalancer
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -81,10 +82,15 @@ def run_pipeline():
     df['specialist'] = df['label'].str.lower().map(SPECIALIST_MAP)
     df['specialist'] = df['specialist'].fillna('General Practice')
 
-    # Train classifier
+    # Balance dataset
+    logging.info("Balancing dataset...")
+    balancer = DataBalancer(strategy='moderate')
+    df_balanced = balancer.balance_dataset(df, target_col='specialist')
+
+    # Train classifier on balanced data
     logging.info("Training model...")
     classifier = SpecialistClassifier()
-    classifier.train(X_text=df['cleaned_symptoms'], y_specialist=df['specialist'])
+    classifier.train(X_text=df_balanced['cleaned_symptoms'], y_specialist=df_balanced['specialist'])
     
     # Test on new data
     logging.info("Testing model on new symptoms...")
