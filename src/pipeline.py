@@ -3,6 +3,7 @@ import logging
 import os
 from src.validator import DataValidator
 from src.cleaner import MedicalTextPreprocessor
+from src.model import SpecialistClassifier
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
@@ -10,9 +11,7 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 # Configuration
 RAW_DATA_PATH = 'data/raw/dataset.csv'
 PROCESSED_DATA_PATH = 'data/processed/cleaned_medical_data.csv'
-REQUIRED_COLUMNS = ['diseases']
 
-# Disease to specialist mapping
 SPECIALIST_MAP = {
     'psoriasis': 'Dermatology', 'acne': 'Dermatology', 'impetigo': 'Dermatology', 
     'fungal infection': 'Dermatology', 'chicken pox': 'Dermatology',
@@ -78,25 +77,35 @@ def run_pipeline():
     logging.info("Applying NLP cleaning...")
     df['cleaned_symptoms'] = df['text'].apply(cleaner.clean_text)
     
-    # Map to specialists
-    logging.info("Mapping to specialists...")
-    df['specialist_referral'] = df['label'].str.lower().map(SPECIALIST_MAP)
-    df['specialist_referral'] = df['specialist_referral'].fillna('General Practice')
+    # Map to specialists for training
+    df['specialist'] = df['label'].str.lower().map(SPECIALIST_MAP)
+    df['specialist'] = df['specialist'].fillna('General Practice')
 
-    # Add urgency
-    high_urgency = ['heart attack', 'stroke', 'paralysis (brain hemorrhage)', 'pneumonia', 'sepsis']
-    df['urgency'] = df['label'].str.lower().apply(lambda x: 'High' if x in high_urgency else 'Normal')
-
-    # Save output
-    os.makedirs(os.path.dirname(PROCESSED_DATA_PATH), exist_ok=True)
-    output_columns = ['label', 'text', 'cleaned_symptoms', 'specialist_referral', 'urgency']
-    df_output = df[output_columns]
+    # Train classifier
+    logging.info("Training model...")
+    classifier = SpecialistClassifier()
+    classifier.train(X_text=df['cleaned_symptoms'], y_specialist=df['specialist'])
     
+    # Test on new data
+    logging.info("Testing model on new symptoms...")
+    test_cases = [
+        "chest pain and difficulty breathing", 
+        "skin rash with itching",
+        "blurred vision and headache"
+    ]
+    cleaned_test = [cleaner.clean_text(t) for t in test_cases]
+    predictions = classifier.predict(cleaned_test)
+    
+    for symptom, pred in zip(test_cases, predictions):
+        logging.info(f"'{symptom}' -> {pred}")
+
+    # Save results
+    classifier.save_model()
+    output_columns = ['label', 'text', 'cleaned_symptoms', 'specialist']
+    df_output = df[output_columns]
     df_output.to_csv(PROCESSED_DATA_PATH, index=False)
     logging.info(f"Saved to {PROCESSED_DATA_PATH}")
     logging.info(f"Processed {len(df_output)} records")
-    logging.info(f"Unique diseases: {df_output['label'].nunique()}")
-    logging.info(f"\nSpecialist distribution:\n{df_output['specialist_referral'].value_counts()}")
 
 if __name__ == "__main__":
     run_pipeline()
