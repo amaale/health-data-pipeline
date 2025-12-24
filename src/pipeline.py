@@ -7,70 +7,96 @@ from src.cleaner import MedicalTextPreprocessor
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
-# --- CONFIGURATION ---
-RAW_DATA_PATH = 'data/raw/dataset.csv' # Ensure your downloaded CSV is renamed to this
+# Configuration
+RAW_DATA_PATH = 'data/raw/dataset.csv'
 PROCESSED_DATA_PATH = 'data/processed/cleaned_medical_data.csv'
-REQUIRED_COLUMNS = ['label', 'text'] # Kaggle dataset usually has 'label' (disease) and 'text' (symptom)
+REQUIRED_COLUMNS = ['diseases']
 
-# --- SPECIALIST MAPPING LOGIC ---
-# Mapping the specific Kaggle Symptom2Disease labels to Medical Specialties
+# Disease to specialist mapping
 SPECIALIST_MAP = {
-    'Psoriasis': 'Dermatology', 'Acne': 'Dermatology', 'Impetigo': 'Dermatology', 
-    'Fungal infection': 'Dermatology', 'Chicken pox': 'Dermatology',
-    'Diabetes': 'Endocrinology', 'Hypoglycemia': 'Endocrinology',
-    'Hypertension': 'Cardiology', 'Heart attack': 'Cardiology', 'Varicose veins': 'Vascular Surgery',
-    'Migraine': 'Neurology', 'Cervical spondylosis': 'Neurology', 'Paralysis (brain hemorrhage)': 'Neurology',
-    'Jaundice': 'Gastroenterology', 'Gastroesophageal reflux disease': 'Gastroenterology', 
-    'Peptic ulcer diseae': 'Gastroenterology', 'Dimorphic hemorrhoids(piles)': 'Gastroenterology',
-    'Pneumonia': 'Pulmonology', 'Bronchial Asthma': 'Pulmonology', 'Common Cold': 'General Practice',
-    'Urinary tract infection': 'Urology',
-    'Malaria': 'Infectious Disease', 'Dengue': 'Infectious Disease', 'Typhoid': 'Infectious Disease',
-    'Arthritis': 'Rheumatology', 'Osteoarthristis': 'Rheumatology',
-    'Allergy': 'Immunology', 'Drug Reaction': 'Immunology'
+    'psoriasis': 'Dermatology', 'acne': 'Dermatology', 'impetigo': 'Dermatology', 
+    'fungal infection': 'Dermatology', 'chicken pox': 'Dermatology',
+    'diabetes': 'Endocrinology', 'hypoglycemia': 'Endocrinology', 'hypothyroidism': 'Endocrinology',
+    'hyperthyroidism': 'Endocrinology',
+    'hypertension': 'Cardiology', 'heart attack': 'Cardiology', 'varicose veins': 'Vascular Surgery',
+    'heart failure': 'Cardiology', 'coronary artery disease': 'Cardiology',
+    'migraine': 'Neurology', 'cervical spondylosis': 'Neurology', 'paralysis (brain hemorrhage)': 'Neurology',
+    'epilepsy': 'Neurology', 'stroke': 'Neurology', 'alzheimer': 'Neurology', 'parkinson': 'Neurology',
+    'jaundice': 'Gastroenterology', 'gastroesophageal reflux disease': 'Gastroenterology', 
+    'peptic ulcer diseae': 'Gastroenterology', 'dimorphic hemorrhoids(piles)': 'Gastroenterology',
+    'hepatitis': 'Gastroenterology', 'cirrhosis': 'Gastroenterology',
+    'pneumonia': 'Pulmonology', 'bronchial asthma': 'Pulmonology', 'tuberculosis': 'Pulmonology',
+    'copd': 'Pulmonology', 'asthma': 'Pulmonology',
+    'common cold': 'General Practice', 'flu': 'General Practice', 'allergy': 'Immunology',
+    'urinary tract infection': 'Urology', 'kidney stone': 'Urology',
+    'malaria': 'Infectious Disease', 'dengue': 'Infectious Disease', 'typhoid': 'Infectious Disease',
+    'aids': 'Infectious Disease', 'hepatitis a': 'Infectious Disease', 'hepatitis b': 'Infectious Disease',
+    'hepatitis c': 'Infectious Disease', 'hepatitis d': 'Infectious Disease', 'hepatitis e': 'Infectious Disease',
+    'arthritis': 'Rheumatology', 'osteoarthristis': 'Rheumatology', 'rheumatoid arthritis': 'Rheumatology',
+    'panic disorder': 'Psychiatry', 'depression': 'Psychiatry', 'anxiety': 'Psychiatry',
+    'bipolar disorder': 'Psychiatry', 'schizophrenia': 'Psychiatry',
+    'drug reaction': 'Immunology', 'anemia': 'Hematology', 'leukemia': 'Oncology',
 }
 
-def run_pipeline():
-    logging.info("Starting Health Data Pipeline...")
+def convert_binary_symptoms_to_text(row):
+    """Convert binary symptom columns to text string"""
+    symptom_columns = [col for col in row.index if col != 'diseases']
+    active_symptoms = [col for col in symptom_columns if row[col] == 1]
+    return ' '.join(active_symptoms) if active_symptoms else 'no symptoms reported'
 
-    # 1. Ingestion
+
+def run_pipeline():
+    logging.info("Starting pipeline...")
+
+    # Load data
     if not os.path.exists(RAW_DATA_PATH):
-        logging.error(f"File not found: {RAW_DATA_PATH}. Please place the Kaggle CSV there.")
+        logging.error(f"File not found: {RAW_DATA_PATH}")
         return
 
     df = pd.read_csv(RAW_DATA_PATH)
-    logging.info(f"Data Loaded. Shape: {df.shape}")
+    logging.info(f"Loaded {df.shape[0]} rows, {df.shape[1]} columns")
+    
+    # Transform binary symptoms to text
+    logging.info("Converting symptoms to text...")
+    df['text'] = df.apply(convert_binary_symptoms_to_text, axis=1)
+    df['label'] = df['diseases']
 
-    # 2. Validation
-    validator = DataValidator(required_columns=REQUIRED_COLUMNS)
+    # Validate
+    validator = DataValidator(required_columns=['diseases'])
     if not validator.validate_schema(df):
         return
     
-    df, removed = validator.remove_invalid_rows(df)
+    # Remove rows without symptoms
+    initial_count = len(df)
+    df = df[df['text'] != 'no symptoms reported']
+    removed = initial_count - len(df)
+    if removed > 0:
+        logging.warning(f"Removed {removed} rows with no symptoms")
     
-    # 3. Processing (NLP Cleaning)
+    # NLP cleaning
     cleaner = MedicalTextPreprocessor()
-    logging.info("Starting NLP Cleaning (this may take a moment)...")
-    
-    # Apply cleaning to the 'text' column
+    logging.info("Applying NLP cleaning...")
     df['cleaned_symptoms'] = df['text'].apply(cleaner.clean_text)
     
-    # 4. Feature Engineering (Mapping to Specialist)
-    logging.info("Mapping Symptoms to Specialists...")
-    # Map the disease label to the specialist using our dictionary
-    df['specialist_referral'] = df['label'].map(SPECIALIST_MAP)
-    
-    # Fill unknown mappings with 'General Practice'
+    # Map to specialists
+    logging.info("Mapping to specialists...")
+    df['specialist_referral'] = df['label'].str.lower().map(SPECIALIST_MAP)
     df['specialist_referral'] = df['specialist_referral'].fillna('General Practice')
 
-    # Add urgency flag (Example logic)
-    high_urgency = ['Heart attack', 'Paralysis (brain hemorrhage)', 'Pneumonia']
-    df['urgency'] = df['label'].apply(lambda x: 'High' if x in high_urgency else 'Normal')
+    # Add urgency
+    high_urgency = ['heart attack', 'stroke', 'paralysis (brain hemorrhage)', 'pneumonia', 'sepsis']
+    df['urgency'] = df['label'].str.lower().apply(lambda x: 'High' if x in high_urgency else 'Normal')
 
-    # 5. Load (Save to Processed)
+    # Save output
     os.makedirs(os.path.dirname(PROCESSED_DATA_PATH), exist_ok=True)
-    df.to_csv(PROCESSED_DATA_PATH, index=False)
-    logging.info(f"Pipeline Finished. Data saved to {PROCESSED_DATA_PATH}")
-    logging.info(f"Preview:\n{df[['label', 'specialist_referral', 'urgency']].head()}")
+    output_columns = ['label', 'text', 'cleaned_symptoms', 'specialist_referral', 'urgency']
+    df_output = df[output_columns]
+    
+    df_output.to_csv(PROCESSED_DATA_PATH, index=False)
+    logging.info(f"Saved to {PROCESSED_DATA_PATH}")
+    logging.info(f"Processed {len(df_output)} records")
+    logging.info(f"Unique diseases: {df_output['label'].nunique()}")
+    logging.info(f"\nSpecialist distribution:\n{df_output['specialist_referral'].value_counts()}")
 
 if __name__ == "__main__":
     run_pipeline()
