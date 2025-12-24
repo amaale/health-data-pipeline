@@ -59,3 +59,4 @@ Mac OS junk
 PyTest
 
 .pytest_cache/
+test_manual.py
