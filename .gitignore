@@ -1,4 +1,11 @@
-Byte-compiled / optimized / DLL files
+Byte-compiled / optimized / D# Virtual environments (CRITICAL: Do not upload your venv)
+
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/s
 
 pycache/
 *.py[cod]
