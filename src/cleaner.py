@@ -3,9 +3,8 @@ import re
 import logging
 
 class MedicalTextPreprocessor:
-    """
-    Handles the NLP cleaning pipeline using spaCy.
-    """
+    """Handles NLP text cleaning using spaCy"""
+    
     def __init__(self, model: str = "en_core_web_sm"):
         try:
             self.nlp = spacy.load(model)
@@ -15,24 +14,18 @@ class MedicalTextPreprocessor:
             raise
 
     def clean_text(self, text: str) -> str:
-        """
-        Applies a pipeline of cleaning operations:
-        1. Lowercasing
-        2. Removing special characters
-        3. Lemmatization (running -> run)
-        4. Stopword removal (the, is, and)
-        """
+        """Clean and normalize text using lemmatization and stopword removal"""
         if not isinstance(text, str):
             return ""
 
-        # 1. Basic normalization
+        # Basic normalization
         text = text.lower().strip()
-        text = re.sub(r'[^a-zA-Z\s]', '', text) # Remove punctuation/numbers
+        text = re.sub(r'[^a-zA-Z\s]', '', text)
 
-        # 2. Advanced NLP processing
+        # NLP processing
         doc = self.nlp(text)
         
-        # 3. Extract lemmas for non-stop words
+        # Extract lemmas, remove stopwords and short tokens
         cleaned_tokens = [
             token.lemma_ for token in doc 
             if not token.is_stop and not token.is_punct and len(token.text) > 2
